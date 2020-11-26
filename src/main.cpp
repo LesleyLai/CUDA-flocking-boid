@@ -18,13 +18,13 @@
 #define COHERENT_GRID 0
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
-const int N_FOR_VIS = 5000;
+const int N_FOR_VIS = 50;
 const float DT = 0.2f;
 
 /**
  * C main function.
  */
-int main(int argc, char* argv[])
+auto main(int argc, char* argv[]) -> int
 {
   projectName = "565 CUDA Intro: Boids";
 
@@ -110,7 +110,7 @@ bool init(int argc, char** argv)
   cudaGLRegisterBufferObject(boidVBO_velocities);
 
   // Initialize N-body simulation
-  Boids::initSimulation(N_FOR_VIS);
+  Boids::init_simulation(N_FOR_VIS);
 
   updateCamera();
 
@@ -213,7 +213,7 @@ void runCUDA()
 #endif
 
 #if VISUALIZE
-  Boids::copyBoidsToVBO(dptrVertPositions, dptrVertVelocities);
+  Boids::copy_boids_to_VBO(dptrVertPositions, dptrVertVelocities);
 #endif
   // unmap buffer object
   cudaGLUnmapBufferObject(boidVBO_positions);
