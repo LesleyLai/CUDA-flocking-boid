@@ -1,0 +1,37 @@
+---
+Checks:          '*,
+-clang-analyzer-deadcode.DeadStores,
+-clang-analyzer-alpha.*,
+-readability-*,
+-llvm-include-order,
+-llvm-header-guard,
+-llvmlibc-*,
+-cppcoreguidelines-pro-bounds-pointer-arithmetic,
+-cppcoreguidelines-avoid-magic-numbers,
+-cppcoreguidelines-pro-type-union-access,
+-cppcoreguidelines-pro-bounds-constant-array-index,
+-*-avoid-c-arrays,
+-fuchsia-*,
+-hicpp-uppercase-literal-suffix,
+-google-runtime-references,
+-google-build-using-namespace,
+-google-readability-braces-around-statements,
+-hicpp-signed-bitwise,
+-hicpp-uppercase-literal-suffix,
+-hicpp-braces-around-statements
+'
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'catch.hpp'
+FormatStyle: 'file'
+CheckOptions:
+  - key:             readability-function-size.LineThreshold
+    value:           '200'
+  - key:             readability-function-size.ParameterThreshold
+    value:           '16'
+  - key:             readability-function-size.StatementThreshold
+    value:           '400'
+  - key:             misc-non-private-member-variables-in-classes.IgnorePublicMemberVariables
+    value:           '1'
+  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
+    value: '1;2;3;4;8;'
+...
