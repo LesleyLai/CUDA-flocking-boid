@@ -68,30 +68,27 @@ glm::vec3* dev_pos = nullptr;
 glm::vec3* dev_vel1 = nullptr;
 glm::vec3* dev_vel2 = nullptr;
 
-// LOOK-2.1 - these are NOT allocated for you. You'll have to set up the thrust
-// pointers on your own too.
-
 // For efficient sorting and the uniform grid. These should always be parallel.
-int* dev_particleArrayIndices; // What index in dev_pos and dev_velX represents
-                               // this particle?
-int* dev_particleGridIndices;  // What grid cell is this particle in?
-// needed for use with thrust
-thrust::device_ptr<int> dev_thrust_particleArrayIndices;
-thrust::device_ptr<int> dev_thrust_particleGridIndices;
+unsigned int* dev_particle_array_indices =
+    nullptr; // index in dev_pos and dev_velX for each boid
+unsigned int* dev_particle_grid_indices = nullptr; // grid index of each boid
+thrust::device_ptr<unsigned int> dev_thrust_particle_array_indices;
+thrust::device_ptr<unsigned int> dev_thrust_particle_grid_indices;
 
-int* dev_gridCellStartIndices; // What part of dev_particleArrayIndices belongs
-int* dev_gridCellEndIndices;   // to this cell?
+// What part of dev_particle_array_indices belongs to this cell?
+int* dev_grid_cell_start_indices = nullptr;
+int* dev_grid_cell_end_indices = nullptr;
 
 // TODO-2.3 - consider what additional buffers you might need to reshuffle
 // the position and velocity data to be coherent within cells.
 
-// LOOK-2.1 - Grid parameters based on simulation parameters.
+// Grid parameters based on simulation parameters.
 // These are automatically computed for you in Boids::initSimulation
-int gridCellCount;
-int gridSideCount;
-float gridCellWidth;
-float gridInverseCellWidth;
-glm::vec3 gridMinimum;
+int grid_cell_count;
+int grid_side_count;
+float grid_cell_width;
+float grid_inverse_cell_width;
+glm::vec3 grid_minimum{};
 
 /******************
  * initSimulation *
@@ -111,7 +108,8 @@ __host__ __device__ auto hash(unsigned int a) -> unsigned int
 __host__ __device__ auto generate_random_vec3(float time, unsigned int index)
     -> glm::vec3
 {
-  thrust::default_random_engine rng(hash(static_cast<int>(index * time)));
+  thrust::default_random_engine rng(
+      hash(static_cast<int>(static_cast<float>(index) * time)));
   thrust::uniform_real_distribution<float> unitDistrib(-1, 1);
 
   return glm::vec3(unitDistrib(rng), unitDistrib(rng), unitDistrib(rng));
@@ -148,19 +146,31 @@ void Boids::init_simulation(unsigned int N)
       1, objects_count, dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernel_generate_random_pos_array failed!");
 
-  // LOOK-2.1 computing grid params
-  gridCellWidth =
+  // computing grid params
+  grid_cell_width =
       2.0f * std::max(std::max(rule1_distance, rule2_distance), rule3_distance);
-  const int half_side_count = static_cast<int>(scene_scale / gridCellWidth) + 1;
-  gridSideCount = 2 * half_side_count;
+  const int half_side_count =
+      static_cast<int>(scene_scale / grid_cell_width) + 1;
+  grid_side_count = 2 * half_side_count;
 
-  gridCellCount = gridSideCount * gridSideCount * gridSideCount;
-  gridInverseCellWidth = 1.0f / gridCellWidth;
-  float halfGridWidth = gridCellWidth * half_side_count;
-  gridMinimum.x -= halfGridWidth;
-  gridMinimum.y -= halfGridWidth;
-  gridMinimum.z -= halfGridWidth;
+  grid_cell_count = grid_side_count * grid_side_count * grid_side_count;
+  grid_inverse_cell_width = 1.0f / grid_cell_width;
+  float halfGridWidth = grid_cell_width * half_side_count;
+  grid_minimum.x -= halfGridWidth;
+  grid_minimum.y -= halfGridWidth;
+  grid_minimum.z -= halfGridWidth;
 
+  cudaMalloc(reinterpret_cast<void**>(&dev_particle_array_indices),
+             N * sizeof(std::uint32_t));
+  checkCUDAErrorWithLine("cudaMalloc dev_particle_array_indices failed!");
+  cudaMalloc(reinterpret_cast<void**>(&dev_particle_grid_indices),
+             grid_cell_count * sizeof(std::uint32_t));
+  checkCUDAErrorWithLine("cudaMalloc dev_particle_grid_indices failed!");
+
+  dev_thrust_particle_array_indices =
+      thrust::device_pointer_cast(dev_particle_array_indices);
+  dev_thrust_particle_grid_indices =
+      thrust::device_pointer_cast(dev_particle_grid_indices);
   // TODO-2.1 TODO-2.3 - Allocate additional buffers here.
   cudaDeviceSynchronize();
 }
@@ -322,9 +332,10 @@ __device__ int gridIndex3Dto1D(int x, int y, int z, int gridResolution)
   return x + y * gridResolution + z * gridResolution * gridResolution;
 }
 
-__global__ void kernComputeIndices(int N, int gridResolution, glm::vec3 gridMin,
-                                   float inverseCellWidth, glm::vec3* pos,
-                                   int* indices, int* gridIndices)
+__global__ void kern_compute_indices(int N, int grid_resolution,
+                                     glm::vec3 grid_min,
+                                     float inverse_cell_width, glm::vec3* pos,
+                                     int* indices, int* grid_indices)
 {
   // TODO-2.1
   // - Label each boid with the index of its grid cell.
@@ -439,6 +450,9 @@ void Boids::stepSimulationCoherentGrid(float dt)
 
 void Boids::end_simulation()
 {
+  cudaFree(dev_particle_array_indices);
+  cudaFree(dev_particle_grid_indices);
+
   cudaFree(dev_vel1);
   cudaFree(dev_vel2);
   cudaFree(dev_pos);
