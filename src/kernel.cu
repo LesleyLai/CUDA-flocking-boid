@@ -336,7 +336,7 @@ __global__ void kernComputeIndices(int N, int gridResolution, glm::vec3 gridMin,
 //          does not enclose any boids
 __global__ void kernResetIntBuffer(int N, int* intBuffer, int value)
 {
-  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+  const auto index = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (index < N) {
     intBuffer[index] = value;
   }
@@ -391,8 +391,6 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
  */
 void Boids::stepSimulationNaive(float dt)
 {
-  // TODO-1.2 - use the kernels you wrote to step the simulation forward in
-  // time.
   dim3 fullBlocksPerGrid((objects_count + block_size - 1) / block_size);
 
   kern_update_pos<<<fullBlocksPerGrid, block_size>>>(objects_count, dt, dev_pos,
@@ -439,7 +437,7 @@ void Boids::stepSimulationCoherentGrid(float dt)
   // - Ping-pong buffers as needed. THIS MAY BE DIFFERENT FROM BEFORE.
 }
 
-void Boids::endSimulation()
+void Boids::end_simulation()
 {
   cudaFree(dev_vel1);
   cudaFree(dev_vel2);

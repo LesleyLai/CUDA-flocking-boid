@@ -1,11 +1,3 @@
-/**
- * @file      main.cpp
- * @brief     Example Boids flocking simulation for CIS 565
- * @authors   Liam Boone, Kai Ninomiya, Kangning (Gary) Li
- * @date      2013-2017
- * @copyright University of Pennsylvania
- */
-
 #include "main.hpp"
 
 // ================
@@ -14,12 +6,11 @@
 
 // LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
 #define VISUALIZE 1
-#define UNIFORM_GRID 0
+#define UNIFORM_GRID 1
 #define COHERENT_GRID 0
 
-// LOOK-1.2 - change this to adjust particle count in the simulation
-const int N_FOR_VIS = 50;
-const float DT = 0.2f;
+constexpr int N_FOR_VIS = 1e4;
+constexpr float DT = 0.2f;
 
 /**
  * C main function.
@@ -29,8 +20,8 @@ auto main(int argc, char* argv[]) -> int
   projectName = "565 CUDA Intro: Boids";
 
   if (init(argc, argv)) {
-    mainLoop();
-    Boids::endSimulation();
+    main_loop();
+    Boids::end_simulation();
     return 0;
   } else {
     return 1;
@@ -41,8 +32,8 @@ auto main(int argc, char* argv[]) -> int
 //---------RUNTIME STUFF---------
 //-------------------------------
 
-std::string deviceName;
-GLFWwindow* window;
+std::string device_name;
+GLFWwindow* window = nullptr;
 
 /**
  * Initialization of CUDA and GLFW.
@@ -67,7 +58,7 @@ bool init(int argc, char** argv)
   std::ostringstream ss;
   ss << projectName << " [SM " << major << "." << minor << " "
      << deviceProp.name << "]";
-  deviceName = ss.str();
+  device_name = ss.str();
 
   // Window setup stuff
   glfwSetErrorCallback(errorCallback);
@@ -84,7 +75,7 @@ bool init(int argc, char** argv)
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
   window =
-      glfwCreateWindow(width, height, deviceName.c_str(), nullptr, nullptr);
+      glfwCreateWindow(width, height, device_name.c_str(), nullptr, nullptr);
   if (!window) {
     glfwTerminate();
     return false;
@@ -220,7 +211,7 @@ void runCUDA()
   cudaGLUnmapBufferObject(boidVBO_velocities);
 }
 
-void mainLoop()
+void main_loop()
 {
   double fps = 0;
   double timebase = 0;
@@ -247,7 +238,7 @@ void mainLoop()
     ss << "[";
     ss.precision(1);
     ss << std::fixed << fps;
-    ss << " fps] " << deviceName;
+    ss << " fps] " << device_name;
     glfwSetWindowTitle(window, ss.str().c_str());
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -255,7 +246,7 @@ void mainLoop()
 #if VISUALIZE
     glUseProgram(program[PROG_BOID]);
     glBindVertexArray(boidVAO);
-    glPointSize((GLfloat)pointSize);
+    glPointSize(static_cast<GLfloat>(pointSize));
     glDrawElements(GL_POINTS, N_FOR_VIS + 1, GL_UNSIGNED_INT, 0);
     glPointSize(1.0f);
 

@@ -16,6 +16,6 @@ void stepSimulationScatteredGrid(float dt);
 void stepSimulationCoherentGrid(float dt);
 void copy_boids_to_VBO(float* vbodptr_positions, float* vbodptr_velocities);
 
-void endSimulation();
+void end_simulation();
 void unitTest();
 } // namespace Boids
