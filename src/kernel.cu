@@ -24,9 +24,7 @@ void checkCUDAError(const char* msg, int line = -1)
 {
   cudaError_t err = cudaGetLastError();
   if (cudaSuccess != err) {
-    if (line >= 0) {
-      fprintf(stderr, "Line %d: ", line);
-    }
+    if (line >= 0) { fprintf(stderr, "Line %d: ", line); }
     fprintf(stderr, "Cuda error: %s: %s.\n", msg, cudaGetErrorString(err));
     exit(EXIT_FAILURE);
   }
@@ -72,8 +70,6 @@ glm::vec3* dev_vel2 = nullptr;
 unsigned int* dev_particle_array_indices =
     nullptr; // index in dev_pos and dev_velX for each boid
 unsigned int* dev_particle_grid_indices = nullptr; // grid index of each boid
-thrust::device_ptr<unsigned int> dev_thrust_particle_array_indices;
-thrust::device_ptr<unsigned int> dev_thrust_particle_grid_indices;
 
 // What part of dev_particle_array_indices belongs to this cell?
 int* dev_grid_cell_start_indices = nullptr;
@@ -164,13 +160,9 @@ void Boids::init_simulation(unsigned int N)
              N * sizeof(std::uint32_t));
   checkCUDAErrorWithLine("cudaMalloc dev_particle_array_indices failed!");
   cudaMalloc(reinterpret_cast<void**>(&dev_particle_grid_indices),
-             grid_cell_count * sizeof(std::uint32_t));
+             N * sizeof(std::uint32_t));
   checkCUDAErrorWithLine("cudaMalloc dev_particle_grid_indices failed!");
 
-  dev_thrust_particle_array_indices =
-      thrust::device_pointer_cast(dev_particle_array_indices);
-  dev_thrust_particle_grid_indices =
-      thrust::device_pointer_cast(dev_particle_grid_indices);
   // TODO-2.1 TODO-2.3 - Allocate additional buffers here.
   cudaDeviceSynchronize();
 }
@@ -240,9 +232,7 @@ __device__ auto compute_velocity_change(unsigned int N, unsigned int i_self,
   glm::vec3 perceived_center{}, c{}, perceived_velocity{};
   int rule1_neighbor_count = 0, rule3_neighbor_count = 0;
   for (auto i = 0u; i < N; ++i) {
-    if (i == i_self) {
-      continue;
-    }
+    if (i == i_self) { continue; }
 
     const float distance = glm::distance(pos[i], pos[i_self]);
     if (distance < rule1_distance) {
@@ -250,9 +240,7 @@ __device__ auto compute_velocity_change(unsigned int N, unsigned int i_self,
       ++rule1_neighbor_count;
     }
 
-    if (distance < rule2_distance) {
-      c -= (pos[i] - pos[i_self]);
-    }
+    if (distance < rule2_distance) { c -= (pos[i] - pos[i_self]); }
 
     if (distance < rule3_distance) {
       perceived_velocity += vel[i];
@@ -278,9 +266,7 @@ __global__ void kern_update_velocity_brute_force(unsigned int N, glm::vec3* pos,
                                                  glm::vec3* vel2)
 {
   const auto index = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (index >= N) {
-    return;
-  }
+  if (index >= N) { return; }
 
   for (auto i = 0u; i < N; ++i) {
     // Compute a new velocity based on pos and vel1
@@ -303,9 +289,7 @@ __global__ void kern_update_pos(unsigned int N, float dt, glm::vec3* pos,
 {
   // Update position by velocity
   const auto index = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (index >= N) {
-    return;
-  }
+  if (index >= N) { return; }
   glm::vec3 thisPos = pos[index];
   thisPos += vel[index] * dt;
 
@@ -327,20 +311,35 @@ __global__ void kern_update_pos(unsigned int N, float dt, glm::vec3* pos,
 //          for(x)
 //            for(y)
 //             for(z)? Or some other order?
-__device__ int gridIndex3Dto1D(int x, int y, int z, int gridResolution)
+__device__ auto grid_index_3D_to_1D(unsigned int x, unsigned int y,
+                                    unsigned int z,
+                                    unsigned int grid_side_count)
+    -> unsigned int
 {
-  return x + y * gridResolution + z * gridResolution * gridResolution;
+  return x + y * grid_side_count + z * grid_side_count * grid_side_count;
 }
 
-__global__ void kern_compute_indices(int N, int grid_resolution,
+__global__ void kern_compute_indices(int N, unsigned int grid_side_count,
                                      glm::vec3 grid_min,
                                      float inverse_cell_width, glm::vec3* pos,
-                                     int* indices, int* grid_indices)
+                                     unsigned int* indices,
+                                     unsigned int* grid_indices)
 {
-  // TODO-2.1
+  const auto index = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (index >= N) return;
+
   // - Label each boid with the index of its grid cell.
+  auto x = static_cast<unsigned int>((pos[index].x - grid_min.x) *
+                                     inverse_cell_width);
+  auto y = static_cast<unsigned int>((pos[index].y - grid_min.y) *
+                                     inverse_cell_width);
+  auto z = static_cast<unsigned int>((pos[index].z - grid_min.z) *
+                                     inverse_cell_width);
+  grid_indices[index] = grid_index_3D_to_1D(x, y, z, grid_side_count);
+
   // - Set up a parallel array of integer indices as pointers to the actual
   //   boid data in pos and vel1/vel2
+  indices[index] = index;
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
@@ -348,9 +347,7 @@ __global__ void kern_compute_indices(int N, int grid_resolution,
 __global__ void kernResetIntBuffer(int N, int* intBuffer, int value)
 {
   const auto index = (blockIdx.x * blockDim.x) + threadIdx.x;
-  if (index < N) {
-    intBuffer[index] = value;
-  }
+  if (index < N) { intBuffer[index] = value; }
 }
 
 __global__ void kernIdentifyCellStartEnd(int N, int* particleGridIndices,
@@ -402,11 +399,12 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
  */
 void Boids::stepSimulationNaive(float dt)
 {
-  dim3 fullBlocksPerGrid((objects_count + block_size - 1) / block_size);
+  const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
+                                  block_size);
 
-  kern_update_pos<<<fullBlocksPerGrid, block_size>>>(objects_count, dt, dev_pos,
-                                                     dev_vel1);
-  kern_update_velocity_brute_force<<<fullBlocksPerGrid, block_size>>>(
+  kern_update_pos<<<full_blocks_per_grid, block_size>>>(objects_count, dt,
+                                                        dev_pos, dev_vel1);
+  kern_update_velocity_brute_force<<<full_blocks_per_grid, block_size>>>(
       objects_count, dev_pos, dev_vel1, dev_vel2);
 
   // ping-pong the velocity buffers
@@ -416,12 +414,23 @@ void Boids::stepSimulationNaive(float dt)
 void Boids::stepSimulationScatteredGrid(float dt)
 {
   // TODO-2.1
-  // Uniform Grid Neighbor search using Thrust sort.
-  // In Parallel:
+
   // - label each particle with its array index as well as its grid index.
   //   Use 2x width grids.
+  const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
+                                  block_size);
+  kern_compute_indices<<<full_blocks_per_grid, block_size>>>(
+      objects_count, grid_side_count, grid_minimum, grid_inverse_cell_width,
+      dev_pos, dev_particle_array_indices, dev_particle_grid_indices);
+
   // - Unstable key sort using Thrust. A stable sort isn't necessary, but you
   //   are welcome to do a performance comparison.
+  auto thrust_indices = thrust::device_pointer_cast(dev_particle_array_indices);
+  auto thrust_grid_indices =
+      thrust::device_pointer_cast(dev_particle_grid_indices);
+  thrust::sort_by_key(thrust_grid_indices, thrust_grid_indices + objects_count,
+                      thrust_indices);
+
   // - Naively unroll the loop for finding the start and end indices of each
   //   cell's data pointers in the array of boid indices
   // - Perform velocity updates using neighbor search
@@ -456,8 +465,6 @@ void Boids::end_simulation()
   cudaFree(dev_vel1);
   cudaFree(dev_vel2);
   cudaFree(dev_pos);
-
-  // TODO-2.1 TODO-2.3 - Free any additional buffers here.
 }
 
 void Boids::unitTest()

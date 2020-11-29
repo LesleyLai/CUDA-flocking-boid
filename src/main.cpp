@@ -17,7 +17,7 @@ constexpr float DT = 0.2f;
  */
 auto main(int argc, char* argv[]) -> int
 {
-  projectName = "565 CUDA Intro: Boids";
+  project_name = "Boids";
 
   if (init(argc, argv)) {
     main_loop();
@@ -56,7 +56,7 @@ bool init(int argc, char** argv)
   int minor = deviceProp.minor;
 
   std::ostringstream ss;
-  ss << projectName << " [SM " << major << "." << minor << " "
+  ss << project_name << " [SM " << major << "." << minor << " "
      << deviceProp.name << "]";
   device_name = ss.str();
 

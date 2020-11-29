@@ -1,5 +1,5 @@
 ---
-Checks:          '*,
+Checks: '*,
 -clang-analyzer-deadcode.DeadStores,
 -clang-analyzer-alpha.*,
 -readability-*,
@@ -18,20 +18,21 @@ Checks:          '*,
 -google-readability-braces-around-statements,
 -hicpp-signed-bitwise,
 -hicpp-uppercase-literal-suffix,
--hicpp-braces-around-statements
+-hicpp-braces-around-statements,
+-*-braces-around-statements,
 '
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'catch.hpp'
 FormatStyle: 'file'
 CheckOptions:
-  - key:             readability-function-size.LineThreshold
-    value:           '200'
-  - key:             readability-function-size.ParameterThreshold
-    value:           '16'
-  - key:             readability-function-size.StatementThreshold
-    value:           '400'
-  - key:             misc-non-private-member-variables-in-classes.IgnorePublicMemberVariables
-    value:           '1'
-  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
+  - key: readability-function-size.LineThreshold
+    value: '200'
+  - key: readability-function-size.ParameterThreshold
+    value: '16'
+  - key: readability-function-size.StatementThreshold
+    value: '400'
+  - key: misc-non-private-member-variables-in-classes.IgnorePublicMemberVariables
+    value: '1'
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
     value: '1;2;3;4;8;'
 ...

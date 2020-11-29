@@ -57,7 +57,7 @@ glm::mat4 projection;
 // Main
 //====================================
 
-const char* projectName;
+const char* project_name;
 
 int main(int argc, char* argv[]);
 
