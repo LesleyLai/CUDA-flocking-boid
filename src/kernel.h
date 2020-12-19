@@ -17,5 +17,4 @@ void step_simulation_coherent_grid(float dt);
 void copy_boids_to_VBO(float* vbodptr_positions, float* vbodptr_velocities);
 
 void end_simulation();
-void unitTest();
 } // namespace Boids

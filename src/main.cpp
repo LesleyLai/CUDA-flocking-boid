@@ -9,7 +9,7 @@
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 0
 
-constexpr int N_FOR_VIS = 2e2;
+constexpr int N_FOR_VIS = 1e4;
 constexpr float DT = 0.2f;
 
 /**
@@ -214,9 +214,6 @@ void main_loop()
   double fps = 0;
   double timebase = 0;
   int frame = 0;
-
-  Boids::unitTest(); // LOOK-1.2 We run some basic example code to make sure
-                     // your CUDA development setup is ready to go.
 
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
