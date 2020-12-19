@@ -9,7 +9,7 @@
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 0
 
-constexpr int N_FOR_VIS = 1e4;
+constexpr int N_FOR_VIS = 2e2;
 constexpr float DT = 0.2f;
 
 /**
@@ -86,9 +86,7 @@ bool init(int argc, char** argv)
   glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
   glewExperimental = GL_TRUE;
-  if (glewInit() != GLEW_OK) {
-    return false;
-  }
+  if (glewInit() != GLEW_OK) { return false; }
 
   // Initialize drawing state
   initVAO();
@@ -196,11 +194,11 @@ void runCUDA()
 
 // execute the kernel
 #if UNIFORM_GRID && COHERENT_GRID
-  Boids::stepSimulationCoherentGrid(DT);
+  Boids::step_simulation_uniform_grid(DT);
 #elif UNIFORM_GRID
-  Boids::stepSimulationScatteredGrid(DT);
+  Boids::step_simulation_scattered_grid(DT);
 #else
-  Boids::stepSimulationNaive(DT);
+  Boids::step_simulation_naive(DT);
 #endif
 
 #if VISUALIZE

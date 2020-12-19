@@ -37,7 +37,7 @@ void checkCUDAError(const char* msg, int line = -1)
 /*! Block size used for CUDA kernel launch. */
 constexpr unsigned int block_size = 128;
 
-constexpr float rule1_distance = 60.0f;
+constexpr float rule1_distance = 30.0f;
 constexpr float rule2_distance = 3.0f;
 constexpr float rule3_distance = 5.0f;
 
@@ -80,11 +80,19 @@ int* dev_grid_cell_end_indices = nullptr;
 
 // Grid parameters based on simulation parameters.
 // These are automatically computed for you in Boids::initSimulation
-int grid_cell_count;
-int grid_side_count;
-float grid_cell_width;
-float grid_inverse_cell_width;
-glm::vec3 grid_minimum{};
+// computing grid params
+
+constexpr float grid_cell_width =
+    2.0f * std::max(std::max(rule1_distance, rule2_distance), rule3_distance);
+constexpr int half_side_count =
+    static_cast<int>(scene_scale / grid_cell_width) + 1;
+constexpr int grid_side_count = 2 * half_side_count;
+constexpr int grid_cell_count =
+    grid_side_count * grid_side_count * grid_side_count;
+constexpr float grid_inverse_cell_width = 1.0f / grid_cell_width;
+constexpr glm::vec3 grid_minimum{grid_cell_width * half_side_count,
+                                 grid_cell_width* half_side_count,
+                                 grid_cell_width* half_side_count};
 
 /******************
  * initSimulation *
@@ -141,20 +149,6 @@ void Boids::init_simulation(unsigned int N)
   kern_generate_random_pos_array<<<fullBlocksPerGrid, block_size>>>(
       1, objects_count, dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernel_generate_random_pos_array failed!");
-
-  // computing grid params
-  grid_cell_width =
-      2.0f * std::max(std::max(rule1_distance, rule2_distance), rule3_distance);
-  const int half_side_count =
-      static_cast<int>(scene_scale / grid_cell_width) + 1;
-  grid_side_count = 2 * half_side_count;
-
-  grid_cell_count = grid_side_count * grid_side_count * grid_side_count;
-  grid_inverse_cell_width = 1.0f / grid_cell_width;
-  float halfGridWidth = grid_cell_width * half_side_count;
-  grid_minimum.x -= halfGridWidth;
-  grid_minimum.y -= halfGridWidth;
-  grid_minimum.z -= halfGridWidth;
 
   cudaMalloc(reinterpret_cast<void**>(&dev_particle_array_indices),
              N * sizeof(std::uint32_t));
@@ -397,7 +391,7 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
 /**
  * Step the entire N-body simulation by `dt` seconds.
  */
-void Boids::stepSimulationNaive(float dt)
+void Boids::step_simulation_naive(float dt)
 {
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
                                   block_size);
@@ -411,7 +405,7 @@ void Boids::stepSimulationNaive(float dt)
   std::swap(dev_vel1, dev_vel2);
 }
 
-void Boids::stepSimulationScatteredGrid(float dt)
+void Boids::step_simulation_scattered_grid(float dt)
 {
   // TODO-2.1
 
@@ -438,7 +432,7 @@ void Boids::stepSimulationScatteredGrid(float dt)
   // - Ping-pong buffers as needed
 }
 
-void Boids::stepSimulationCoherentGrid(float dt)
+void Boids::step_simulation_coherent_grid(float dt)
 {
   // TODO-2.3 - start by copying Boids::stepSimulationNaiveGrid
   // Uniform Grid Neighbor search using Thrust sort on cell-coherent data.

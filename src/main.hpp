@@ -30,7 +30,7 @@ GLuint boidIBO = 0;
 GLuint displayImage;
 GLuint program[2];
 
-const unsigned int PROG_BOID = 0;
+constexpr unsigned int PROG_BOID = 0;
 
 const float fovy = (float)(PI / 4);
 const float zNear = 0.10f;
