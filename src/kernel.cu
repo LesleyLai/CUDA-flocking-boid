@@ -2,18 +2,9 @@
 #include "kernel.h"
 #include "utilityCore.hpp"
 #include <cmath>
+#include <cstdio>
 #include <cuda.h>
 #include <glm/glm.hpp>
-#include <stdio.h>
-
-// LOOK-2.1 potentially useful for doing grid-based neighbor search
-#ifndef imax
-#define imax(a, b) (((a) > (b)) ? (a) : (b))
-#endif
-
-#ifndef imin
-#define imin(a, b) (((a) < (b)) ? (a) : (b))
-#endif
 
 #define checkCUDAErrorWithLine(msg) checkCUDAError(msg, __LINE__)
 
@@ -37,7 +28,7 @@ void checkCUDAError(const char* msg, int line = -1)
 /*! Block size used for CUDA kernel launch. */
 constexpr unsigned int block_size = 128;
 
-constexpr float rule1_distance = 30.0f;
+constexpr float rule1_distance = 5.0f;
 constexpr float rule2_distance = 3.0f;
 constexpr float rule3_distance = 5.0f;
 
@@ -162,7 +153,7 @@ void Boids::init_simulation(unsigned int N)
   cudaMalloc(reinterpret_cast<void**>(&dev_grid_cell_end_indices),
              grid_cell_count * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_grid_cell_start_indices failed!");
-  // TODO-2.1 TODO-2.3 - Allocate additional buffers here.
+  // TODO-2.3 - Allocate additional buffers here.
   cudaDeviceSynchronize();
 }
 
@@ -304,7 +295,6 @@ __global__ void kern_update_pos(unsigned int N, float dt, glm::vec3* pos,
   pos[index] = thisPos;
 }
 
-// LOOK-2.1 Consider this method of computing a 1D index from a 3D grid index.
 // LOOK-2.3 Looking at this method, what would be the most memory efficient
 //          order for iterating over neighboring grid cells?
 //          for(x)
@@ -335,8 +325,6 @@ __global__ void kern_compute_indices(unsigned int N, glm::vec3 grid_min,
   indices[index] = index;
 }
 
-// LOOK-2.1 Consider how this could be useful for indicating that a cell
-//          does not enclose any boids
 __global__ void kern_reset_int_buffer(unsigned int N, int* intBuffer, int value)
 {
   const auto index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -376,25 +364,27 @@ __global__ void kern_update_vel_neighbor_search_scattered(
   if (index >= N) return;
 
   // - Identify the grid cell that this particle is in
-  const auto x = static_cast<int>((pos[index].x - grid_minimum.x) *
-                                  grid_inverse_cell_width);
-  const auto y = static_cast<int>((pos[index].y - grid_minimum.y) *
-                                  grid_inverse_cell_width);
-  const auto z = static_cast<int>((pos[index].z - grid_minimum.z) *
-                                  grid_inverse_cell_width);
-  // const auto grid_index = grid_index_3D_to_1D(x, y, z);
+  const auto x = static_cast<int>(
+      std::round((pos[index].x - grid_minimum.x) * grid_inverse_cell_width));
+  const auto y = static_cast<int>(
+      std::round((pos[index].y - grid_minimum.y) * grid_inverse_cell_width));
+  const auto z = static_cast<int>(
+      std::round((pos[index].z - grid_minimum.z) * grid_inverse_cell_width));
 
   glm::vec3 perceived_center{}, c{}, perceived_velocity{};
   int rule1_neighbor_count = 0, rule3_neighbor_count = 0;
 
-  // - Identify which cells may contain neighbors. This isn't always 8.
-  // TODO: checks
-  for (int xx = x - 1; xx < x + 1; ++xx) {
-    if (xx < 0 || xx >= grid_side_count) continue;
-    for (int yy = y - 1; yy < y + 1; ++yy) {
-      if (yy < 0 || yy >= grid_side_count) continue;
-      for (int zz = z - 1; zz < z + 1; ++zz) {
-        if (zz < 0 || zz >= grid_side_count) continue;
+  // - Identify which cells may contain neighbors.
+  const auto x_begin = max(x - 1, 0);
+  const auto x_end = min(x + 1, grid_side_count - 1);
+  const auto y_begin = max(y - 1, 0);
+  const auto y_end = min(y + 1, grid_side_count - 1);
+  const auto z_begin = max(z - 1, 0);
+  const auto z_end = min(z + 1, grid_side_count - 1);
+
+  for (int xx = x_begin; xx < x_end; ++xx) {
+    for (int yy = y_begin; yy < y_end; ++yy) {
+      for (int zz = z_begin; zz < z_end; ++zz) {
         const auto neighbor_grid_index = grid_index_3D_to_1D(xx, yy, zz);
 
         // - For each cell, read the start/end indices
@@ -484,8 +474,6 @@ void Boids::step_simulation_naive(float dt)
 
 void Boids::step_simulation_scattered_grid(float dt)
 {
-  // TODO-2.1
-
   // - label each particle with its array index as well as its grid index.
   //   Use 2x width grids.
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /

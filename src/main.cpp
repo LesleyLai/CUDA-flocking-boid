@@ -9,7 +9,7 @@
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 0
 
-constexpr int N_FOR_VIS = 1e4;
+constexpr int N_FOR_VIS = 3e5;
 constexpr float DT = 0.2f;
 
 /**
