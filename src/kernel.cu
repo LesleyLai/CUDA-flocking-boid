@@ -141,7 +141,7 @@ void Boids::init_simulation(unsigned int N)
   cudaMalloc(reinterpret_cast<void**>(&dev_vel2), N * sizeof(glm::vec3));
   checkCUDAErrorWithLine("cudaMalloc dev_vel2 failed!");
 
-  kern_generate_random_pos_array<<<fullBlocksPerGrid, block_size>>>(
+  kern_generate_random_pos_array<<<fullBlocksPerGrid, threads_per_block>>>(
       1, objects_count, dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernel_generate_random_pos_array failed!");
 
@@ -208,9 +208,9 @@ void Boids::copy_boids_to_VBO(float* vbodptr_positions,
 {
   dim3 fullBlocksPerGrid((objects_count + block_size - 1) / block_size);
 
-  kern_copy_positions_to_VBO<<<fullBlocksPerGrid, block_size>>>(
+  kern_copy_positions_to_VBO<<<fullBlocksPerGrid, threads_per_block>>>(
       objects_count, dev_pos, vbodptr_positions, scene_scale);
-  kern_copy_velocities_to_VBO<<<fullBlocksPerGrid, block_size>>>(
+  kern_copy_velocities_to_VBO<<<fullBlocksPerGrid, threads_per_block>>>(
       objects_count, dev_vel1, vbodptr_velocities, scene_scale);
 
   checkCUDAErrorWithLine("copy_boids_to_VBO failed!");
@@ -281,6 +281,21 @@ __global__ void kern_update_velocity_brute_force(unsigned int N, glm::vec3* pos,
   }
 }
 
+template <typename T> __device__ auto wrap_around(T val, T min, T max) -> T
+{
+  val = val < min ? max : val;
+  val = val > max ? min : val;
+  return val;
+}
+
+__device__ auto wrap_particle(glm::vec3 pos) -> glm::vec3
+{
+  pos.x = wrap_around(pos.x, -scene_scale, scene_scale);
+  pos.y = wrap_around(pos.y, -scene_scale, scene_scale);
+  pos.z = wrap_around(pos.z, -scene_scale, scene_scale);
+  return pos;
+}
+
 /**
  * For each of the `N` bodies, update its position based on its current
  * velocity.
@@ -291,19 +306,9 @@ __global__ void kern_update_pos(unsigned int N, float dt, glm::vec3* pos,
   // Update position by velocity
   const auto index = threadIdx.x + (blockIdx.x * blockDim.x);
   if (index >= N) { return; }
-  glm::vec3 thisPos = pos[index];
-  thisPos += vel[index] * dt;
 
-  // Wrap the boids around so we don't lose them
-  thisPos.x = thisPos.x < -scene_scale ? scene_scale : thisPos.x;
-  thisPos.y = thisPos.y < -scene_scale ? scene_scale : thisPos.y;
-  thisPos.z = thisPos.z < -scene_scale ? scene_scale : thisPos.z;
-
-  thisPos.x = thisPos.x > scene_scale ? -scene_scale : thisPos.x;
-  thisPos.y = thisPos.y > scene_scale ? -scene_scale : thisPos.y;
-  thisPos.z = thisPos.z > scene_scale ? -scene_scale : thisPos.z;
-
-  pos[index] = thisPos;
+  // Need to wrap the boids around so we don't lose them
+  pos[index] = wrap_particle(pos[index] + vel[index] * dt);
 }
 
 __device__ auto grid_index_3D_to_1D(unsigned int x, unsigned int y,
@@ -320,7 +325,7 @@ __global__ void kern_compute_indices(unsigned int N, glm::vec3 grid_min,
   if (index >= N) return;
 
   // - Label each boid with the index of its grid cell.
-  glm::tvec3<unsigned int> grid_3d_indices =
+  const glm::tvec3<unsigned int> grid_3d_indices =
       (pos[index] - grid_min) * grid_inverse_cell_width;
 
   grid_indices[index] = grid_index_3D_to_1D(
@@ -532,9 +537,9 @@ void Boids::step_simulation_naive(float dt)
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
                                   block_size);
 
-  kern_update_pos<<<full_blocks_per_grid, block_size>>>(objects_count, dt,
-                                                        dev_pos, dev_vel1);
-  kern_update_velocity_brute_force<<<full_blocks_per_grid, block_size>>>(
+  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
+      objects_count, dt, dev_pos, dev_vel1);
+  kern_update_velocity_brute_force<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, dev_pos, dev_vel1, dev_vel2);
 
   // ping-pong the velocity buffers
@@ -548,7 +553,7 @@ void Boids::step_simulation_scattered_grid(float dt)
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
                                   block_size);
   const dim3 grid_size((grid_cell_count + block_size - 1) / block_size);
-  kern_compute_indices<<<full_blocks_per_grid, block_size>>>(
+  kern_compute_indices<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, grid_minimum, dev_pos, dev_particle_array_indices,
       dev_particle_grid_indices);
 
@@ -562,23 +567,23 @@ void Boids::step_simulation_scattered_grid(float dt)
 
   // - Naively unroll the loop for finding the start and end indices of each
   //   cell's data pointers in the array of boid indices
-  kern_reset_int_buffer<<<grid_size, block_size>>>(
+  kern_reset_int_buffer<<<grid_size, threads_per_block>>>(
       grid_cell_count, dev_grid_cell_start_indices, -1);
-  kern_reset_int_buffer<<<grid_size, block_size>>>(
+  kern_reset_int_buffer<<<grid_size, threads_per_block>>>(
       grid_cell_count, dev_grid_cell_end_indices, -1);
-  kern_identify_cell_start_end<<<full_blocks_per_grid, block_size>>>(
+  kern_identify_cell_start_end<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, dev_particle_grid_indices, dev_grid_cell_start_indices,
       dev_grid_cell_end_indices);
 
   // - Perform velocity updates using neighbor search
   kern_update_vel_neighbor_search_scattered<<<full_blocks_per_grid,
-                                              block_size>>>(
+                                              threads_per_block>>>(
       objects_count, dev_grid_cell_start_indices, dev_grid_cell_end_indices,
       dev_particle_array_indices, dev_pos, dev_vel1, dev_vel2);
 
   // - Update positions
-  kern_update_pos<<<full_blocks_per_grid, block_size>>>(objects_count, dt,
-                                                        dev_pos, dev_vel2);
+  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
+      objects_count, dt, dev_pos, dev_vel2);
   // - Ping-pong buffers as needed
   std::swap(dev_vel1, dev_vel2);
 }
@@ -589,7 +594,7 @@ void Boids::step_simulation_coherent_grid(float dt)
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
                                   block_size);
   const dim3 grid_size((grid_cell_count + block_size - 1) / block_size);
-  kern_compute_indices<<<full_blocks_per_grid, block_size>>>(
+  kern_compute_indices<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, grid_minimum, dev_pos, dev_particle_array_indices,
       dev_particle_grid_indices);
 
@@ -603,11 +608,11 @@ void Boids::step_simulation_coherent_grid(float dt)
 
   // - Naively unroll the loop for finding the start and end indices of each
   //   cell's data pointers in the array of boid indices
-  kern_reset_int_buffer<<<grid_size, block_size>>>(
+  kern_reset_int_buffer<<<grid_size, threads_per_block>>>(
       grid_cell_count, dev_grid_cell_start_indices, -1);
-  kern_reset_int_buffer<<<grid_size, block_size>>>(
+  kern_reset_int_buffer<<<grid_size, threads_per_block>>>(
       grid_cell_count, dev_grid_cell_end_indices, -1);
-  kern_identify_cell_start_end<<<full_blocks_per_grid, block_size>>>(
+  kern_identify_cell_start_end<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, dev_particle_grid_indices, dev_grid_cell_start_indices,
       dev_grid_cell_end_indices);
 
@@ -625,12 +630,12 @@ void Boids::step_simulation_coherent_grid(float dt)
 
   // - Perform velocity updates using neighbor search
   kern_update_vel_neighbor_search_coherent<<<full_blocks_per_grid,
-                                             block_size>>>(
+                                             threads_per_block>>>(
       objects_count, dev_grid_cell_start_indices, dev_grid_cell_end_indices,
       dev_pos_gathered, dev_vel_gathered, dev_vel2);
 
   // - Update positions
-  kern_update_pos<<<full_blocks_per_grid, block_size>>>(
+  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, dt, dev_pos_gathered, dev_vel2);
 
   //  Ping-pong buffers as needed. THIS MAY BE DIFFERENT FROM BEFORE.
