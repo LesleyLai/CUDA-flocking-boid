@@ -4,12 +4,11 @@
 // Configuration
 // ================
 
-// LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
 #define VISUALIZE 1
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 1
 
-constexpr int N_FOR_VIS = 3e5;
+constexpr int N_FOR_VIS = 5e4;
 constexpr float DT = 0.2f;
 
 /**
@@ -185,9 +184,9 @@ void runCUDA()
   // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not
   // use this buffer
 
-  float4* dptr = NULL;
-  float* dptrVertPositions = NULL;
-  float* dptrVertVelocities = NULL;
+  float4* dptr = nullptr;
+  float* dptrVertPositions = nullptr;
+  float* dptrVertVelocities = nullptr;
 
   cudaGLMapBufferObject((void**)&dptrVertPositions, boidVBO_positions);
   cudaGLMapBufferObject((void**)&dptrVertVelocities, boidVBO_velocities);
@@ -219,7 +218,7 @@ void main_loop()
     glfwPollEvents();
 
     frame++;
-    double time = glfwGetTime();
+    const double time = glfwGetTime();
 
     if (time - timebase > 1.0) {
       fps = frame / (time - timebase);

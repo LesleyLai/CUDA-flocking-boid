@@ -28,7 +28,7 @@ void checkCUDAError(const char* msg, int line = -1)
  *****************/
 
 /*! Block size used for CUDA kernel launch. */
-constexpr unsigned int block_size = 128;
+constexpr unsigned int block_size = 64;
 
 constexpr float rule1_distance = 5.0f;
 constexpr float rule2_distance = 3.0f;
@@ -235,31 +235,34 @@ __device__ auto compute_velocity_change(unsigned int N, unsigned int i_self,
   for (auto i = 0u; i < N; ++i) {
     if (i == i_self) { continue; }
 
-    const float distance = glm::distance(pos[i], pos[i_self]);
-    if (distance < rule1_distance) {
+    const float distance2 = glm::dot(pos[i], pos[i_self]);
+    if (distance2 < rule1_distance * rule1_distance) {
       perceived_center += pos[i];
       ++rule1_neighbor_count;
     }
 
-    if (distance < rule2_distance) { c -= (pos[i] - pos[i_self]); }
+    if (distance2 < rule2_distance * rule2_distance) {
+      c -= (pos[i] - pos[i_self]);
+    }
 
-    if (distance < rule3_distance) {
+    if (distance2 < rule3_distance * rule3_distance) {
       perceived_velocity += vel[i];
       ++rule3_neighbor_count;
     }
   }
 
-  glm::vec3 result = vel[i_self];
+  glm::vec3 v1{};
   if (rule1_neighbor_count != 0) {
     perceived_center /= rule1_neighbor_count;
-    result += (perceived_center - pos[i_self]) * rule1_scale;
+    v1 = (perceived_center - pos[i_self]) * rule1_scale;
   }
-  result += c * rule2_scale;
+  const auto v2 = c * rule2_scale;
+  glm::vec3 v3{};
   if (rule3_neighbor_count != 0) {
     perceived_velocity /= rule3_neighbor_count;
-    result += perceived_velocity * rule3_scale;
+    v3 = perceived_velocity * rule3_scale;
   }
-  return result;
+  return vel[i_self] + v1 + v2 + v3;
 }
 
 __global__ void kern_update_velocity_brute_force(unsigned int N, glm::vec3* pos,
@@ -273,7 +276,7 @@ __global__ void kern_update_velocity_brute_force(unsigned int N, glm::vec3* pos,
     // Compute a new velocity based on pos and vel1
     auto new_velocity = compute_velocity_change(N, i, pos, vel1);
     // Clamp the speed
-    if (dot(new_velocity, new_velocity) > max_speed * max_speed) {
+    if (new_velocity.length() > max_speed) {
       new_velocity = glm::normalize(new_velocity) * max_speed;
     }
     // Record the new velocity into vel2. Question: why NOT vel1?
@@ -309,6 +312,18 @@ __global__ void kern_update_pos(unsigned int N, float dt, glm::vec3* pos,
 
   // Need to wrap the boids around so we don't lose them
   pos[index] = wrap_particle(pos[index] + vel[index] * dt);
+}
+
+void update_pos(unsigned int N, float dt, glm::vec3* pos, glm::vec3* vel)
+{
+  auto thrust_pos = thrust::device_pointer_cast(pos);
+  auto thrust_vel = thrust::device_pointer_cast(vel);
+
+  thrust::transform(
+      thrust_pos, thrust_pos + N, thrust_vel, thrust_pos,
+      [dt] __device__(const glm::vec3& pos, const glm::vec3& vel) {
+        return wrap_particle(pos + vel * dt);
+      });
 }
 
 __device__ auto grid_index_3D_to_1D(unsigned int x, unsigned int y,
@@ -537,10 +552,9 @@ void Boids::step_simulation_naive(float dt)
   const dim3 full_blocks_per_grid((objects_count + block_size - 1) /
                                   block_size);
 
-  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
-      objects_count, dt, dev_pos, dev_vel1);
   kern_update_velocity_brute_force<<<full_blocks_per_grid, threads_per_block>>>(
       objects_count, dev_pos, dev_vel1, dev_vel2);
+  update_pos(objects_count, dt, dev_pos, dev_vel2);
 
   // ping-pong the velocity buffers
   std::swap(dev_vel1, dev_vel2);
@@ -582,8 +596,8 @@ void Boids::step_simulation_scattered_grid(float dt)
       dev_particle_array_indices, dev_pos, dev_vel1, dev_vel2);
 
   // - Update positions
-  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
-      objects_count, dt, dev_pos, dev_vel2);
+  update_pos(objects_count, dt, dev_pos, dev_vel2);
+
   // - Ping-pong buffers as needed
   std::swap(dev_vel1, dev_vel2);
 }
@@ -634,9 +648,7 @@ void Boids::step_simulation_coherent_grid(float dt)
       objects_count, dev_grid_cell_start_indices, dev_grid_cell_end_indices,
       dev_pos_gathered, dev_vel_gathered, dev_vel2);
 
-  // - Update positions
-  kern_update_pos<<<full_blocks_per_grid, threads_per_block>>>(
-      objects_count, dt, dev_pos_gathered, dev_vel2);
+  update_pos(objects_count, dt, dev_pos_gathered, dev_vel2);
 
   //  Ping-pong buffers as needed. THIS MAY BE DIFFERENT FROM BEFORE.
   std::swap(dev_vel1, dev_vel2);

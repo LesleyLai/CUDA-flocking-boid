@@ -1,6 +1,15 @@
 * CUDA Flocking
 
-Tested on: Ubuntu Linux 20.04 LTS, i7-7700 @ 3.60GHz, RTX 2070 (desktop)
++ Lesley Lai
+  + [[https:://lesleylai.info][lesleylai.info]]
+  + [[https://twitter.com/LesleyLai6][Twitter]]
++ Tested on: Ubuntu Linux 20.04 LTS, i7-7700 @ 3.60GHz, RTX 2070 (desktop)
+
+#+CAPTION: CUDA Flocking
+[[./images/boid.gif]]
 
 ** Credit:
 - Starting code adapted from [[https://github.com/CIS565-Fall-2020/Project1-CUDA-Flocking][University of Pennsylvania CIS565-Fall-2020 Project 1]]
+** Build Instructions
+** Algorithms
+** Performance Analysis
