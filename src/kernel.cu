@@ -114,8 +114,8 @@ __host__ __device__ auto generate_random_vec3(float time, unsigned int index)
   return glm::vec3(unitDistrib(rng), unitDistrib(rng), unitDistrib(rng));
 }
 
-__global__ void kern_generate_random_pos_array(int time, int N, glm::vec3* arr,
-                                               float scale)
+__global__ void kern_generate_random_pos_array(int time, unsigned int N,
+                                               glm::vec3* arr, float scale)
 {
   const auto index = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (index < N) {
@@ -235,17 +235,17 @@ __device__ auto compute_velocity_change(unsigned int N, unsigned int i_self,
   for (auto i = 0u; i < N; ++i) {
     if (i == i_self) { continue; }
 
-    const float distance2 = glm::dot(pos[i], pos[i_self]);
-    if (distance2 < rule1_distance * rule1_distance) {
+    const float distance = glm::distance(pos[i], pos[i_self]);
+    if (distance < rule1_distance * rule1_distance) {
       perceived_center += pos[i];
       ++rule1_neighbor_count;
     }
 
-    if (distance2 < rule2_distance * rule2_distance) {
+    if (distance < rule2_distance * rule2_distance) {
       c -= (pos[i] - pos[i_self]);
     }
 
-    if (distance2 < rule3_distance * rule3_distance) {
+    if (distance < rule3_distance * rule3_distance) {
       perceived_velocity += vel[i];
       ++rule3_neighbor_count;
     }
@@ -272,16 +272,11 @@ __global__ void kern_update_velocity_brute_force(unsigned int N, glm::vec3* pos,
   const auto index = threadIdx.x + (blockIdx.x * blockDim.x);
   if (index >= N) { return; }
 
-  for (auto i = 0u; i < N; ++i) {
-    // Compute a new velocity based on pos and vel1
-    auto new_velocity = compute_velocity_change(N, i, pos, vel1);
-    // Clamp the speed
-    if (new_velocity.length() > max_speed) {
-      new_velocity = glm::normalize(new_velocity) * max_speed;
-    }
-    // Record the new velocity into vel2. Question: why NOT vel1?
-    vel2[i] = new_velocity;
+  auto new_velocity = compute_velocity_change(N, index, pos, vel1);
+  if (glm::length(new_velocity) > max_speed) {
+    new_velocity = glm::normalize(new_velocity) * max_speed;
   }
+  vel2[index] = new_velocity;
 }
 
 template <typename T> __device__ auto wrap_around(T val, T min, T max) -> T
