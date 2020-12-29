@@ -5,11 +5,40 @@
   + [[https://twitter.com/LesleyLai6][Twitter]]
 + Tested on: Ubuntu Linux 20.04 LTS, i7-7700 @ 3.60GHz, RTX 2070 (desktop)
 
+  This project is a CUDA implementation of Boid, an artificial life program that simulates fishes or birds' flocking behaviors.
+  Besides the naive brute-force implementation, the project also implements grid accelerating data-structure.
+  The simulation is visualized by OpenGL.
+
 #+CAPTION: CUDA Flocking
 [[./images/boid.gif]]
 
 ** Credit:
 - Starting code adapted from [[https://github.com/CIS565-Fall-2020/Project1-CUDA-Flocking][University of Pennsylvania CIS565-Fall-2020 Project 1]]
+
 ** Build Instructions
-** Algorithms
+   This project use  [[https://cmake.org/][CMake]] as the build system generator and Conan as the package manager.
+   You need to have an up-to-date version of the CMake and [[https://developer.nvidia.com/CUDA-toolkit][CUDA toolkit]] installed.
+
+   You can install Conan through =pip=:
+   #+begin_src shell
+   $ pip install conanfile.txt # Or pip3 on some linux distributions, use sudo if nessesory
+   #+end_src
+
+   After installing all the tools, build the project with the following command line instructions:
+   #+begin_src shell
+   $ mkdir build && cd build
+   $ cmake -DCMAKE_BUILD_TYPE=Release ..
+   $ make
+   #+end_src
+
+** Algorithms Description
+   TODO
 ** Performance Analysis
+   As Boid is an O(N2) algorithm, we expect the runtime has quadratic growth when increasing the boids count.
+   The benchmark confirmed this expectation:
+
+   #+CAPTION: Runtime of Boid Algorithms
+   [[./images/performance-boid-count.svg]]
+
+   As expected, the utilization of grid data structure causes fantastic performance improvement,
+   and optimization on memory locality (coherent grid) makes the simulation faster.

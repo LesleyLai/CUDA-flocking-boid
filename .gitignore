@@ -560,3 +560,6 @@ xcuserdata
 *.xccheckout
 *.moved-aside
 *.xcuserstate
+
+# use org mode
+README.md
